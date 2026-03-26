@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Cosmic Drift</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #000;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      touch-action: none;
+    }
+
+    canvas {
+      display: block;
+      position: fixed;
+      top: 0; left: 0;
+    }
+
+    #ui {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+
+    .title-wrap {
+      text-align: center;
+      animation: fadeIn 2s ease forwards;
+      opacity: 0;
+    }
+
+    @keyframes fadeIn {
+      0%   { opacity: 0; transform: translateY(20px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 10vw, 6rem);
+      font-weight: 100;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #a78bfa, #60a5fa, #34d399, #f472b6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 30px rgba(167,139,250,0.5));
+    }
+
+    .subtitle {
+      margin-top: 0.75rem;
+      font-size: clamp(0.7rem, 2.5vw, 1rem);
+      letter-spacing: 0.5em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.35);
+    }
+
+    #hint {
+      position: fixed;
+      bottom: 2rem;
+      width: 100%;
+      text-align: center;
+      font-size: 0.75rem;
+      letter-spacing: 0.25em;
+      color: rgba(255,255,255,0.2);
+      animation: pulse 3s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50%       { opacity: 0.7; }
+    }
+
+    #mode-btn {
+      position: fixed;
+      top: 1.25rem;
+      right: 1.25rem;
+      pointer-events: all;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.5);
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 0.5rem 1rem;
+      border-radius: 999px;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: all 0.3s;
+      z-index: 20;
+    }
+
+    #mode-btn:hover {
+      background: rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.9);
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div class="title-wrap">
+    <h1>Cosmic Drift</h1>
+    <p class="subtitle">An interactive universe</p>
+  </div>
+</div>
+
+<div id="hint">touch &amp; drag to shape the cosmos</div>
+
+<button id="mode-btn">Explode</button>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const btn = document.getElementById('mode-btn');
+
+let W, H, cx, cy;
+let pointer = { x: null, y: null, active: false };
+let mode = 'attract'; // attract | explode | orbit
+const MODES = ['attract', 'explode', 'orbit'];
+const MODE_LABELS = { attract: 'Explode', explode: 'Orbit', orbit: 'Attract' };
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  cx = W / 2;
+  cy = H / 2;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Palette ──────────────────────────────────────────────────────────────────
+const PALETTES = [
+  ['#a78bfa','#818cf8','#60a5fa','#34d399'],
+  ['#f472b6','#fb923c','#facc15','#a78bfa'],
+  ['#67e8f9','#38bdf8','#818cf8','#f0abfc'],
+];
+let paletteIdx = 0;
+
+function pickColor(palette) {
+  const c = palette[Math.floor(Math.random() * palette.length)];
+  return c;
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return {r,g,b};
+}
+
+// ── Particles ─────────────────────────────────────────────────────────────────
+const COUNT = Math.min(600, Math.floor(W * H / 3000));
+
+class Particle {
+  constructor() { this.reset(true); }
+
+  reset(init = false) {
+    const angle  = Math.random() * Math.PI * 2;
+    const radius = Math.random() * Math.min(W, H) * 0.45;
+    this.x  = cx + Math.cos(angle) * radius;
+    this.y  = cy + Math.sin(angle) * radius;
+    this.ox = this.x;
+    this.oy = this.y;
+    this.vx = (Math.random() - 0.5) * 0.5;
+    this.vy = (Math.random() - 0.5) * 0.5;
+    this.size  = Math.random() * 2.5 + 0.5;
+    this.hex   = pickColor(PALETTES[paletteIdx]);
+    const rgb  = hexToRgb(this.hex);
+    this.r = rgb.r; this.g = rgb.g; this.b = rgb.b;
+    this.alpha = Math.random() * 0.6 + 0.4;
+    this.speed = Math.random() * 0.8 + 0.2;
+    this.orbitAngle  = angle;
+    this.orbitRadius = radius;
+    this.orbitSpeed  = (Math.random() * 0.002 + 0.001) * (Math.random() < 0.5 ? 1 : -1);
+  }
+
+  update() {
+    const px = pointer.active ? pointer.x : cx;
+    const py = pointer.active ? pointer.y : cy;
+    const dx = px - this.x;
+    const dy = py - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    if (mode === 'attract') {
+      const force = Math.min(120 / (dist * dist), 0.8) * this.speed;
+      this.vx += dx / dist * force;
+      this.vy += dy / dist * force;
+      this.vx *= 0.94;
+      this.vy *= 0.94;
+      this.x  += this.vx;
+      this.y  += this.vy;
+
+    } else if (mode === 'explode') {
+      const force = pointer.active
+        ? Math.min(3000 / (dist * dist + 1), 3) * this.speed
+        : 0;
+      this.vx -= dx / dist * force;
+      this.vy -= dy / dist * force;
+      // drift back toward origin
+      this.vx += (this.ox - this.x) * 0.002;
+      this.vy += (this.oy - this.y) * 0.002;
+      this.vx *= 0.96;
+      this.vy *= 0.96;
+      this.x  += this.vx;
+      this.y  += this.vy;
+
+    } else if (mode === 'orbit') {
+      this.orbitAngle  += this.orbitSpeed * (1 + (pointer.active ? 2 : 0));
+      const tr = this.orbitRadius + (pointer.active
+        ? Math.sin(Date.now() * 0.001 + this.orbitAngle) * 40
+        : 0);
+      const tx = cx + Math.cos(this.orbitAngle) * tr;
+      const ty = cy + Math.sin(this.orbitAngle) * tr;
+      this.x += (tx - this.x) * 0.06;
+      this.y += (ty - this.y) * 0.06;
+    }
+
+    // wrap edges gently
+    if (this.x < -50) this.x = W + 50;
+    if (this.x > W + 50) this.x = -50;
+    if (this.y < -50) this.y = H + 50;
+    if (this.y > H + 50) this.y = -50;
+  }
+
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${this.r},${this.g},${this.b},${this.alpha})`;
+    ctx.fill();
+
+    // glow
+    if (this.size > 1.5) {
+      const grd = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 4);
+      grd.addColorStop(0, `rgba(${this.r},${this.g},${this.b},0.15)`);
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * 4, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+  }
+}
+
+let particles = Array.from({ length: COUNT }, () => new Particle());
+
+// ── Connection lines ──────────────────────────────────────────────────────────
+function drawLines() {
+  const MAX_DIST = 80;
+  const n = particles.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const d  = dx*dx + dy*dy;
+      if (d < MAX_DIST * MAX_DIST) {
+        const alpha = (1 - Math.sqrt(d) / MAX_DIST) * 0.18;
+        const p = particles[i];
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = `rgba(${p.r},${p.g},${p.b},${alpha})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+// ── Nebula blobs ─────────────────────────────────────────────────────────────
+const blobs = Array.from({ length: 5 }, (_, i) => ({
+  x: Math.random() * W,
+  y: Math.random() * H,
+  r: Math.random() * 200 + 100,
+  hue: Math.random() * 360,
+  speed: (Math.random() * 0.0003 + 0.0001) * (Math.random() < 0.5 ? 1 : -1),
+  angle: Math.random() * Math.PI * 2,
+  orbitR: Math.random() * 150 + 50,
+}));
+
+function drawNebula(t) {
+  blobs.forEach(b => {
+    b.angle += b.speed * t;
+    const bx = cx + Math.cos(b.angle) * b.orbitR;
+    const by = cy + Math.sin(b.angle) * b.orbitR;
+    const grd = ctx.createRadialGradient(bx, by, 0, bx, by, b.r);
+    grd.addColorStop(0, `hsla(${b.hue},80%,60%,0.04)`);
+    grd.addColorStop(1, 'transparent');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(bx, by, b.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// ── Loop ─────────────────────────────────────────────────────────────────────
+let last = 0;
+function loop(ts) {
+  const dt = ts - last || 16;
+  last = ts;
+
+  // trail fade instead of clear
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillRect(0, 0, W, H);
+
+  drawNebula(dt);
+  drawLines();
+  particles.forEach(p => { p.update(); p.draw(); });
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+function setPointer(x, y, active) {
+  pointer.x = x;
+  pointer.y = y;
+  pointer.active = active;
+}
+
+// Mouse
+window.addEventListener('mousemove', e => setPointer(e.clientX, e.clientY, true));
+window.addEventListener('mousedown', e => setPointer(e.clientX, e.clientY, true));
+window.addEventListener('mouseup',   () => (pointer.active = false));
+window.addEventListener('mouseleave',() => (pointer.active = false));
+
+// Touch
+window.addEventListener('touchstart', e => {
+  e.preventDefault();
+  setPointer(e.touches[0].clientX, e.touches[0].clientY, true);
+}, { passive: false });
+window.addEventListener('touchmove', e => {
+  e.preventDefault();
+  setPointer(e.touches[0].clientX, e.touches[0].clientY, true);
+}, { passive: false });
+window.addEventListener('touchend',   () => (pointer.active = false));
+
+// Mode button
+btn.addEventListener('click', () => {
+  const idx = MODES.indexOf(mode);
+  mode = MODES[(idx + 1) % MODES.length];
+  btn.textContent = MODE_LABELS[mode];
+
+  // cycle palette on mode change
+  paletteIdx = (paletteIdx + 1) % PALETTES.length;
+  particles.forEach(p => {
+    p.hex = pickColor(PALETTES[paletteIdx]);
+    const rgb = hexToRgb(p.hex);
+    p.r = rgb.r; p.g = rgb.g; p.b = rgb.b;
+  });
+});
+</script>
+</body>
+</html>
