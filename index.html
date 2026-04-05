@@ -64,7 +64,7 @@
 
     #hint {
       position: fixed;
-      bottom: 2rem;
+      bottom: 5.5rem;
       width: 100%;
       text-align: center;
       font-size: 0.75rem;
@@ -79,28 +79,80 @@
       50%       { opacity: 0.7; }
     }
 
-    #mode-btn {
+    #mode-buttons {
       position: fixed;
-      top: 1.25rem;
-      right: 1.25rem;
+      bottom: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 0.5rem;
       pointer-events: all;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.12);
-      color: rgba(255,255,255,0.5);
-      font-size: 0.7rem;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      padding: 0.5rem 1rem;
-      border-radius: 999px;
-      cursor: pointer;
-      backdrop-filter: blur(8px);
-      transition: all 0.3s;
       z-index: 20;
+      padding: 0.5rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(12px);
     }
 
-    #mode-btn:hover {
+    .mode-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: rgba(255,255,255,0.45);
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 0.6rem 1.1rem;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      white-space: nowrap;
+      min-width: 48px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mode-btn:hover {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.8);
+    }
+
+    .mode-btn.active {
       background: rgba(255,255,255,0.12);
-      color: rgba(255,255,255,0.9);
+      border-color: rgba(255,255,255,0.2);
+      color: #fff;
+      box-shadow: 0 0 16px rgba(167,139,250,0.25);
+    }
+
+    @media (max-width: 480px) {
+      #mode-buttons {
+        bottom: 1rem;
+        gap: 0.35rem;
+        padding: 0.4rem;
+      }
+
+      .mode-btn {
+        font-size: 0.7rem;
+        padding: 0.65rem 0.85rem;
+        min-width: 44px;
+        min-height: 44px;
+        letter-spacing: 0.05em;
+      }
+
+      #hint {
+        bottom: 5rem;
+        font-size: 0.65rem;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .mode-btn {
+        font-size: 0.65rem;
+        padding: 0.6rem 0.65rem;
+      }
     }
   </style>
 </head>
@@ -117,18 +169,22 @@
 
 <div id="hint">touch &amp; drag to shape the cosmos</div>
 
-<button id="mode-btn">Explode</button>
+<div id="mode-buttons">
+  <button class="mode-btn" data-mode="attract">Attract</button>
+  <button class="mode-btn" data-mode="explode">Explode</button>
+  <button class="mode-btn" data-mode="orbit">Orbit</button>
+  <button class="mode-btn" data-mode="pulse">Pulse</button>
+</div>
 
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const btn = document.getElementById('mode-btn');
+const modeButtons = document.querySelectorAll('.mode-btn');
 
 let W, H, cx, cy;
 let pointer = { x: null, y: null, active: false };
 let mode = 'attract';
 const MODES = ['attract', 'explode', 'orbit', 'pulse'];
-const MODE_LABELS = { attract: 'Explode', explode: 'Orbit', orbit: 'Pulse', pulse: 'Attract' };
 
 function resize() {
   W = canvas.width  = window.innerWidth;
@@ -138,6 +194,12 @@ function resize() {
 }
 
 resize();
+
+function updateActiveButton() {
+  modeButtons.forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+}
 
 // ── Palette ─────────────────────────────────────────────────────────────────────
 const PALETTES = [
@@ -357,20 +419,27 @@ window.addEventListener('touchmove', e => {
 }, { passive: false });
 window.addEventListener('touchend',   () => (pointer.active = false));
 
-btn.addEventListener('click', () => {
-  const idx = MODES.indexOf(mode);
-  mode = MODES[(idx + 1) % MODES.length];
-  btn.textContent = MODE_LABELS[mode];
+modeButtons.forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const newMode = btn.dataset.mode;
+    if (newMode === mode) return;
 
-  paletteIdx = (paletteIdx + 1) % PALETTES.length;
-  particles.forEach(p => {
-    p.hex = pickColor(PALETTES[paletteIdx]);
-    const rgb = hexToRgb(p.hex);
-    p.r = rgb.r; p.g = rgb.g; p.b = rgb.b;
+    mode = newMode;
+    updateActiveButton();
+
+    const currentModeIdx = MODES.indexOf(mode);
+    paletteIdx = currentModeIdx % PALETTES.length;
+    particles.forEach(p => {
+      p.hex = pickColor(PALETTES[paletteIdx]);
+      const rgb = hexToRgb(p.hex);
+      p.r = rgb.r; p.g = rgb.g; p.b = rgb.b;
+    });
   });
 });
 
 // Initialize
+updateActiveButton();
 particles = Array.from({ length: COUNT }, () => new Particle());
 initBlobs();
 requestAnimationFrame(loop);
